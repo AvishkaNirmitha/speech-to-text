@@ -6,7 +6,7 @@ from vosk import Model, KaldiRecognizer
 
 class VoiceAssistant:
     def __init__(self):
-        self.model_path = "vosk-model-en-us-0.22"
+        # self.model_path = "vosk-model-en-us-0.22"
         self.model_path = "vosk-model-small-en-us-0.15"
         self.recognition_queue = queue.Queue()
         self.speech_engine = pyttsx3.init()

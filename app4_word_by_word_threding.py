@@ -1,55 +1,53 @@
 from langchain_ollama import OllamaLLM
-import sys
-import pyttsx3
 import threading
 import queue
+import pyttsx3
 
-class TTSThread(threading.Thread):
-    def __init__(self, text_queue):
-        threading.Thread.__init__(self)
-        self.text_queue = text_queue
-        self.daemon = True
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 150)
-        self.engine.setProperty('volume', 1.0)
-        voices = self.engine.getProperty('voices')
-        voice_index = 1 if 'male' == 'female' else 0
-        self.engine.setProperty('voice', voices[voice_index].id)
+class TextToSpeechManager:
+    def __init__(self):
+        self.text_queue = queue.Queue()
+        self.tts_engine = pyttsx3.init()
+        self.tts_engine.setProperty('rate', 150)
+        self.tts_engine.setProperty('volume', 1.0)
+        
+        voices = self.tts_engine.getProperty('voices')
+        self.tts_engine.setProperty('voice', voices[0].id)
+        
+        self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)
+        self.tts_thread.start()
 
-    def run(self):
+    def _tts_worker(self):
         while True:
             text = self.text_queue.get()
             if text == "STOP":
                 break
-            print('text---------------------------------->', text)
-            self.engine.say(text)
-            self.engine.runAndWait()
+            self.tts_engine.say(text)
+            self.tts_engine.runAndWait()
             self.text_queue.task_done()
 
-text_queue = queue.Queue()
-tts_thread = TTSThread(text_queue)
-tts_thread.start()
+    def speak(self, text):
+        self.text_queue.put(text)
 
-def text_to_speech(text):
-    text_queue.put(text)
+    def stop(self):
+        self.text_queue.put("STOP")
 
-def ask_question(question):
+def ask_question(tts_manager, question):
     llm = OllamaLLM(
-        # model="llama3:latest",
         model="phi3:latest",
         temperature=0.1,
         base_url="http://localhost:11434",
         streaming=True
     )
     
+    full_response = ""
     for chunk in llm.stream(question):
-        print(chunk)
-        text_to_speech(chunk)
+        full_response += chunk
+        print(chunk, end='', flush=True)
+    
+    tts_manager.speak(full_response)
+    tts_manager.stop()
 
-    text_queue.put("STOP")
-
-# Test
+# Usage
+tts_manager = TextToSpeechManager()
 question = "What is artificial intelligence?"
-ask_question(question)
-
-# text_to_speech("Hello, this is a test message.")
+ask_question(tts_manager, question)

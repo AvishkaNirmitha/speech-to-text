@@ -3,11 +3,11 @@ import sys
 import pyttsx3
 
 engine = pyttsx3.init()
-engine.setProperty('rate', 150)
+engine.setProperty('rate', 200)
 engine.setProperty('volume', 1.0)
 
 voices = engine.getProperty('voices')
-voice_index = 1 if 'male' == 'female' else 0
+voice_index = 0
 engine.setProperty('voice', voices[voice_index].id)
 
 def text_to_speech(text):
@@ -17,7 +17,7 @@ def text_to_speech(text):
 
 def ask_question(question):
     llm = OllamaLLM(
-        model="llama3:latest",
+        model="phi3:latest",
         temperature=0.1,
         base_url="http://localhost:11434",
         streaming=True
@@ -28,7 +28,7 @@ def ask_question(question):
         print(chunk)
         chunk_buffer.append(chunk)
         
-        if (i + 1) % 13 == 0:
+        if (i + 1) % 16 == 0:
             combined_text = ' '.join(chunk_buffer)
             text_to_speech(combined_text)
             chunk_buffer = []

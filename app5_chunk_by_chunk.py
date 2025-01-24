@@ -17,7 +17,7 @@ def text_to_speech(text):
 
 def ask_question(question):
     llm = OllamaLLM(
-        model="phi3:latest",
+        model="llama3.1:8b",
         temperature=0.1,
         base_url="http://localhost:11434",
         streaming=True

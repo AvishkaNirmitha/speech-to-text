@@ -10,7 +10,7 @@ class TextToSpeechManager:
         self.tts_engine.setProperty('rate', 150)
         self.tts_engine.setProperty('volume', 1.0)
         
-        voices = self.tts_engine.getProperty('voices')
+        voices = self.tts_engine.getProperty('voices ')
         self.tts_engine.setProperty('voice', voices[0].id)
         
         self.tts_thread = threading.Thread(target=self._tts_worker, daemon=True)

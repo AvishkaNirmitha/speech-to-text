@@ -1,6 +1,8 @@
 from langchain_ollama import OllamaLLM
 import sys
 import pyttsx3
+import os
+from dotenv import load_dotenv
 
 engine = pyttsx3.init()
 engine.setProperty('rate', 200)
@@ -10,6 +12,10 @@ voices = engine.getProperty('voices')
 voice_index = 0
 engine.setProperty('voice', voices[voice_index].id)
 
+load_dotenv()
+
+model_name = os.getenv("OLLAMA_MODEL", "phi3:latest")
+
 def text_to_speech(text):
     print('text---------------------------------->', text)
     engine.say(text)
@@ -17,7 +23,7 @@ def text_to_speech(text):
 
 def ask_question(question):
     llm = OllamaLLM(
-        model="phi3:latest",
+        model=model_name,
         temperature=0.1,
         base_url="http://localhost:11434",
         streaming=True

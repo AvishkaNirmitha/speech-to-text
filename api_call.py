@@ -44,10 +44,10 @@ def upload_audio_file(api_url, file_path):
 # Example usage
 if __name__ == "__main__":
     # URL of your Flask API endpoint
-    API_URL = "https://beb0-34-16-134-142.ngrok-free.app/api/upload/audio"
+    API_URL = "https://aa1a-35-204-170-38.ngrok-free.app/5000/api/upload/audio"
     
     # Path to your MP3 file
-    AUDIO_FILE_PATH = "full.mp3"  # Replace with your actual file path
+    AUDIO_FILE_PATH = "message2.mp3"  # Replace with your actual file path
     
     try:
         # Upload the file

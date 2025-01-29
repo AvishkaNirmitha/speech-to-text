@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import aiohttp
 import asyncio
 import time
+# import app5_chunk_by_chunk
 
 class AudioClient:
     def __init__(self, sample_rate=16000):
@@ -165,6 +166,8 @@ class AudioClient:
                     result = self.record_audio()
                     if result:
                         keyboard.add_hotkey('q', self.stop_speaking)
+
+                        # app5_chunk_by_chunk.ask_question(result['result']['text'])
             
                         keyboard.remove_hotkey('q')
                 elif choice == '2':

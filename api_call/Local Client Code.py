@@ -13,7 +13,7 @@ import aiohttp
 import asyncio
 import time
 import new_pyttsx3
-# import app5_chunk_by_chunk
+import app5_chunk_by_chunk
 
 class AudioClient:
     def __init__(self, sample_rate=16000):
@@ -179,7 +179,7 @@ class AudioClient:
                     if result:
                         keyboard.add_hotkey('q', self.stop_speaking)
 
-                        # app5_chunk_by_chunk.ask_question(result['result']['text'])
+                        app5_chunk_by_chunk.ask_question(result['result']['text'])
 
                         # new_pyttsx3.text_to_answer(result['result']['text'])
             

@@ -22,6 +22,7 @@ class TextToSpeechSystem:
         self.current_process = None
 
     def answers_generation_thread(self, question):
+        start_time = time.time()
         llm = OllamaLLM(
             model=model_name,
             temperature=0.1,
@@ -41,13 +42,22 @@ class TextToSpeechSystem:
         
             # Check if we have a complete sentence (ends with period)
             if '.' in combined_text:
+                end_time = time.time()
+                execution_time = end_time - start_time
+                print(f"Total execution time: {execution_time:.6f} seconds")
+            
                 # Split by period and keep the last incomplete sentence
                 sentences = combined_text.split('.')
                 complete_sentences = sentences[:-1]  # All complete sentences
                 remainder = sentences[-1]  # Incomplete sentence
             
+                
+
+
                 # Speak complete sentences
                 for sentence in complete_sentences:
+
+
                      # Add sentence to the queue
                     self.answers_sentence_queue.put(sentence.strip())
                     time.sleep(1)  # Simulate some delay in sentence generation

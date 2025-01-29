@@ -117,7 +117,7 @@ class TextToSpeechSystem:
         tts_thread.join()
         keyboard_thread.join()
 
-# Example usage
+# # Example usage
 # if __name__ == "__main__":
 #     #listens for the questio
 
@@ -134,5 +134,3 @@ class TextToSpeechSystem:
 def text_to_answer(question):
     tts_system = TextToSpeechSystem()
     tts_system.run(question)
-
-# text_to_answer('what is the ai ? ')

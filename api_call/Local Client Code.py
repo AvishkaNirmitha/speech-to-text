@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import aiohttp
 import asyncio
 import time
+import new_pyttsx3
 # import app5_chunk_by_chunk
 
 class AudioClient:
@@ -48,12 +49,19 @@ class AudioClient:
 
     async def send_audio_to_server(self, mp3_filename):
         """Asynchronous function to send audio to server"""
+
+        start_time_audio_send = time.time()
+
+
         async with aiohttp.ClientSession() as session:
             with open(mp3_filename, 'rb') as f:
                 data = aiohttp.FormData()
                 data.add_field('audio', f, filename=mp3_filename, content_type='audio/mp3')
                 
                 async with session.post(f"{self.server_url}api/upload/audio", data=data) as response:
+                    end_time_audio_send = time.time()
+                    execution_time_audio_send = end_time_audio_send - start_time_audio_send
+                    print(f"time for api call: {execution_time_audio_send:.6f} seconds")
                     response.raise_for_status()
                     return await response.json()
 
@@ -125,6 +133,12 @@ class AudioClient:
             # Process audio in parallel
             recording = np.concatenate(self.audio_chunks)
             mp3_filename = self.executor.submit(self.process_audio, recording).result()
+
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"time audio save: {execution_time:.6f} seconds")
+
+
             
             # Send to server asynchronously
             result = asyncio.run(self.send_audio_to_server(mp3_filename))
@@ -132,10 +146,8 @@ class AudioClient:
             # print('result---------------------------------->', result)
             print("\result json  converted:", result['result']['text'])
 
-            
-            end_time = time.time()
-            execution_time = end_time - start_time
-            print(f"Total execution time: {execution_time:.6f} seconds")
+        
+
             
             return result
             
@@ -168,6 +180,8 @@ class AudioClient:
                         keyboard.add_hotkey('q', self.stop_speaking)
 
                         # app5_chunk_by_chunk.ask_question(result['result']['text'])
+
+                        # new_pyttsx3.text_to_answer(result['result']['text'])
             
                         keyboard.remove_hotkey('q')
                 elif choice == '2':

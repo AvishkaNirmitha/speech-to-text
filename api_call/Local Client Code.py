@@ -8,58 +8,87 @@ import noisereduce as nr
 import soundfile as sf
 from pydub import AudioSegment
 import os
-import datetime
-import app5_chunk_by_chunk
+from concurrent.futures import ThreadPoolExecutor
+import aiohttp
+import asyncio
 import time
-
-
 
 class AudioClient:
     def __init__(self, sample_rate=16000):
-        """
-        Initialize audio recorder and text-to-speech engine.
-        
-        Args:
-        sample_rate (int): Audio sample rate
-        """
-        self.server_url = "https://df9a-35-189-179-36.ngrok-free.app/"  # Base URL without /upload
+        self.server_url = "https://4d71-35-185-39-192.ngrok-free.app/"
         self.sample_rate = sample_rate
         self.is_recording = False
         self.audio_chunks = []
         
-        # Text-to-Speech setup
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 200)
-        self.engine.setProperty('volume', 1.0)
-        
-        # Set voice (first available voice)
-        voices = self.engine.getProperty('voices')
-        self.engine.setProperty('voice', voices[0].id)
-        
-        # Initialize stop flag
+        # Initialize TTS engine only when needed
+        self._engine = None
         self.stop_flag = False
+        
+        # Create thread pool for parallel processing
+        self.executor = ThreadPoolExecutor(max_workers=3)
 
-    def text_to_speech(self, text):
-        """Convert text to speech."""
-        cleaned_text = ' '.join(text.split())
-        print('Response:', cleaned_text)
-        
-        def on_word(name, location, length):
-            if self.stop_flag:
-                self.engine.stop()
-        
-        self.engine.connect('started-word', on_word)
-        self.engine.say(cleaned_text)
-        self.engine.runAndWait()
+    @property
+    def engine(self):
+        """Lazy initialization of TTS engine"""
+        if self._engine is None:
+            self._engine = pyttsx3.init()
+            self._engine.setProperty('rate', 200)
+            self._engine.setProperty('volume', 1.0)
+            voices = self._engine.getProperty('voices')
+            self._engine.setProperty('voice', voices[0].id)
+        return self._engine
 
     def stop_speaking(self):
         """Stop the speech synthesis process."""
         print("Speech synthesis stopped.")
         self.stop_flag = True
-        self.engine.stop()
+        if self._engine:
+            self._engine.stop()
+
+    async def send_audio_to_server(self, mp3_filename):
+        """Asynchronous function to send audio to server"""
+        async with aiohttp.ClientSession() as session:
+            with open(mp3_filename, 'rb') as f:
+                data = aiohttp.FormData()
+                data.add_field('audio', f, filename=mp3_filename, content_type='audio/mp3')
+                
+                async with session.post(f"{self.server_url}api/upload/audio", data=data) as response:
+                    response.raise_for_status()
+                    return await response.json()
+
+    def process_audio(self, recording):
+        """Process audio in a separate thread"""
+        reduced_noise = nr.reduce_noise(
+            y=recording.flatten(), 
+            sr=self.sample_rate,
+            prop_decrease=0.7
+        )
+        
+        mp3_filename = f"recording_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+        temp_wav = "temp_recording.wav"
+        
+        # Write to WAV and convert to MP3
+        sf.write(temp_wav, reduced_noise, self.sample_rate)
+        audio = AudioSegment.from_wav(temp_wav)
+        audio.export(mp3_filename, format="mp3", parameters=["-q:a", "0"])  # Use highest quality
+        
+        os.remove(temp_wav)
+        return mp3_filename
+
+    def text_to_speech(self, text):
+        """Convert text to speech in a separate thread"""
+        cleaned_text = ' '.join(text.split())
+        print('Response:', cleaned_text)
+        
+        def speak():
+            if not self.stop_flag:
+                self.engine.say(cleaned_text)
+                self.engine.runAndWait()
+        
+        self.executor.submit(speak)
 
     def record_audio(self):
-        """Record audio and send to server for processing."""
+        """Record audio with improved handling"""
         print("Recording started (press 'q' to stop)...")
         
         self.is_recording = True
@@ -69,13 +98,17 @@ class AudioClient:
             if status:
                 print(f"Status: {status}")
             if self.is_recording:
-                self.audio_chunks.append(indata.copy())
+                # Pre-allocate numpy array for better performance
+                chunk = np.empty_like(indata)
+                np.copyto(chunk, indata)
+                self.audio_chunks.append(chunk)
         
         keyboard.add_hotkey('q', self.stop_recording)
         
         with sd.InputStream(callback=audio_callback, 
                           channels=1, 
-                          samplerate=self.sample_rate):
+                          samplerate=self.sample_rate,
+                          blocksize=4096):  # Larger blocksize for better performance
             while self.is_recording:
                 sd.sleep(100)
         
@@ -85,102 +118,64 @@ class AudioClient:
             print("No audio recorded.")
             return None
 
-
-
-        # Start time
         start_time = time.time()
-
-
-
-
-
         
-        # Process and save audio
-        recording = np.concatenate(self.audio_chunks)
-        reduced_noise = nr.reduce_noise(y=recording.flatten(), 
-                                      sr=self.sample_rate,
-                                      prop_decrease=0.7)
-        
-        # Save as MP3
-        mp3_filename = f"recording_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
-        temp_wav = "temp_recording.wav"
-        
-        sf.write(temp_wav, reduced_noise, self.sample_rate)
-        audio = AudioSegment.from_wav(temp_wav)
-        audio.export(mp3_filename, format="mp3")
-        
-        os.remove(temp_wav)
-        
-        print(f"Recording saved as {mp3_filename}")
-        
-        # Send to server
         try:
-            with open(mp3_filename, 'rb') as f:
-                print("Starting at : ", datetime.datetime.now())
-                files = {'audio': (mp3_filename, f, 'audio/mp3')}
-                response = requests.post(f"{self.server_url}api/upload/audio", files=files)
-                        # End time
-                end_time = time.time()
+            # Process audio in parallel
+            recording = np.concatenate(self.audio_chunks)
+            mp3_filename = self.executor.submit(self.process_audio, recording).result()
+            
+            # Send to server asynchronously
+            result = asyncio.run(self.send_audio_to_server(mp3_filename))
 
-                # Execution time
-                execution_time = end_time - start_time
-                print(f"Execution Time speech to text: {execution_time:.6f} seconds")
+            # print('result---------------------------------->', result)
+            print("\result json  converted:", result['result']['text'])
 
-                
-                # # Print response details for debugging
-                # print(f"Response status code: {response.status_code}")
-                # print(f"Response content: {response.text}")
-                
-                response.raise_for_status()
-                result = response.json()
-                print("\result json  converted:", result['result']['text'])
-                start_time_llm = time.time()
-                app5_chunk_by_chunk.ask_question(result['result']['text'])
-                start_time_llm = time.time()
-                execution_time_llm = end_time - start_time
-                print(f"Execution Time speech to text: {execution_time:.6f} seconds")
-                print(f"Execution Time LLM: {execution_time_llm:.6f} seconds")
-                print(f"Total execution time: {execution_time+execution_time_llm:.6f} seconds")
-                # self.text_to_speech(result.get('response', result['result']['text']))
-                return result
-                
-        except requests.exceptions.RequestException as e:
-            print(f"Error sending audio to server: {e}")
-            return None
+            
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Total execution time: {execution_time:.6f} seconds")
+            
+            return result
+            
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            print(f"Error processing audio: {e}")
             return None
         finally:
-            print("After all")
-            # Clean up the temporary file
-            if os.path.exists(mp3_filename):
-                os.remove(mp3_filename)
+            # Clean up in a separate thread
+            def cleanup():
+                if os.path.exists(mp3_filename):
+                    os.remove(mp3_filename)
+            self.executor.submit(cleanup)
 
     def stop_recording(self):
-        """Stop the recording process."""
         print("Recording stopped.")
         self.is_recording = False
 
     def run(self):
-        """Main run method."""
-        while True:
-            print("\nChoose an option:")
-            print("1. Record and process audio")
-            print("2. Exit")
-            choice = input("Enter your choice (1/2): ").strip()
+        try:
+            while True:
+                print("\nChoose an option:")
+                print("1. Record and process audio")
+                print("2. Exit")
+                choice = input("Enter your choice (1/2): ").strip()
+                
+                if choice == '1':
+                    self.stop_flag = False
+                    result = self.record_audio()
+                    if result:
+                        keyboard.add_hotkey('q', self.stop_speaking)
             
-            if choice == '1':
-                self.stop_flag = False
-                result = self.record_audio()
-                if result:
-                    keyboard.add_hotkey('q', self.stop_speaking)
-                    # self.text_to_speech(result.get('response', 'No response from server'))
-                    keyboard.remove_hotkey('q')
-            elif choice == '2':
-                print("Exiting the program.")
-                break
-            else:
-                print("Invalid choice. Please enter 1 or 2.")
+                        keyboard.remove_hotkey('q')
+                elif choice == '2':
+                    break
+                else:
+                    print("Invalid choice. Please enter 1 or 2.")
+        finally:
+            # Cleanup resources
+            self.executor.shutdown(wait=False)
+            if self._engine:
+                self._engine.stop()
 
 def main():
     client = AudioClient()

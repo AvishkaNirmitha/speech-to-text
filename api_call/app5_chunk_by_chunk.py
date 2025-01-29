@@ -60,3 +60,5 @@ def ask_question(question):
 # Test
 # question = "What is artificial intelligence?"
 # ask_question(question)
+
+ask_question("What is artificial intelligence?")

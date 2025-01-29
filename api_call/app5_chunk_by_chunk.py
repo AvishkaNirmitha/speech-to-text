@@ -16,7 +16,14 @@ engine.setProperty('voice', voices[voice_index].id)
 # load_dotenv()
 
 model_name = 'phi3:latest'
-model_name = 'phi3:3.8b'
+model_name = 'phi3:latest' # temp
+
+llm = OllamaLLM(
+    model=model_name,
+    temperature=0.1,
+    base_url="http://localhost:11434",
+    streaming=True
+)
 
 def text_to_speech(text):
     print('text---------------------------------->', text)
@@ -26,12 +33,7 @@ def text_to_speech(text):
 def ask_question(question):
     print('question---------------------------------->', question)
 
-    llm = OllamaLLM(
-        model=model_name,
-        temperature=0.1,
-        base_url="http://localhost:11434",
-        streaming=True
-    )
+
     
     chunk_buffer = []
     start_time = time.time()

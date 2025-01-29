@@ -10,9 +10,9 @@ import signal
 
 load_dotenv()
 
-model_name = os.getenv("OLLAMA_MODEL", "phi3:latest")
-python_executable = os.getenv("PYTHON_EXECUTABLE", "C:/Python311/python.exe")
-script_path = os.getenv("SPEAK_SCRIPT_PATH", "C:/Users/Nuwan/OneDrive/Desktop/ML/Spera ML/Task10_AI_agent/speech-to-text/new_test/speak.py")
+model_name =  "phi3:latest"
+python_executable = "python"
+script_path = "speak.py"
 
 class TextToSpeechSystem:
     def __init__(self):

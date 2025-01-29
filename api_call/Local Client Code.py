@@ -10,6 +10,8 @@ from pydub import AudioSegment
 import os
 import datetime
 import app5_chunk_by_chunk
+import time
+
 
 
 class AudioClient:
@@ -20,7 +22,7 @@ class AudioClient:
         Args:
         sample_rate (int): Audio sample rate
         """
-        self.server_url = "https://7c37-35-240-217-65.ngrok-free.app/"  # Base URL without /upload
+        self.server_url = "https://df9a-35-189-179-36.ngrok-free.app/"  # Base URL without /upload
         self.sample_rate = sample_rate
         self.is_recording = False
         self.audio_chunks = []
@@ -82,6 +84,16 @@ class AudioClient:
         if not self.audio_chunks:
             print("No audio recorded.")
             return None
+
+
+
+        # Start time
+        start_time = time.time()
+
+
+
+
+
         
         # Process and save audio
         recording = np.concatenate(self.audio_chunks)
@@ -107,7 +119,12 @@ class AudioClient:
                 print("Starting at : ", datetime.datetime.now())
                 files = {'audio': (mp3_filename, f, 'audio/mp3')}
                 response = requests.post(f"{self.server_url}api/upload/audio", files=files)
-                print("Ended at : ", datetime.datetime.now())
+                        # End time
+                end_time = time.time()
+
+                # Execution time
+                execution_time = end_time - start_time
+                print(f"Execution Time speech to text: {execution_time:.6f} seconds")
 
                 
                 # # Print response details for debugging
@@ -117,7 +134,13 @@ class AudioClient:
                 response.raise_for_status()
                 result = response.json()
                 print("\result json  converted:", result['result']['text'])
+                start_time_llm = time.time()
                 app5_chunk_by_chunk.ask_question(result['result']['text'])
+                start_time_llm = time.time()
+                execution_time_llm = end_time - start_time
+                print(f"Execution Time speech to text: {execution_time:.6f} seconds")
+                print(f"Execution Time LLM: {execution_time_llm:.6f} seconds")
+                print(f"Total execution time: {execution_time+execution_time_llm:.6f} seconds")
                 # self.text_to_speech(result.get('response', result['result']['text']))
                 return result
                 

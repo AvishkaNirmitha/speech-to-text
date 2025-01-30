@@ -1,163 +1,155 @@
-import sounddevice as sd
+import torch
 import numpy as np
-import datetime
-import keyboard
-import pyttsx3
-import requests
-import noisereduce as nr
-import soundfile as sf
+import pyaudio
+import time
 from pydub import AudioSegment
-import os
-import datetime
+import sys
+import keyboard  # Add this import at the top
 
-class AudioClient:
-    def __init__(self, sample_rate=16000):
-        """
-        Initialize audio recorder and text-to-speech engine.
-        
-        Args:
-        sample_rate (int): Audio sample rate
-        """
-        self.server_url = "https://eed1-34-125-42-238.ngrok-free.app/"  # Base URL without /upload
-        self.sample_rate = sample_rate
-        self.is_recording = False
-        self.audio_chunks = []
-        
-        # Text-to-Speech setup
-        self.engine = pyttsx3.init()
-        self.engine.setProperty('rate', 200)
-        self.engine.setProperty('volume', 1.0)
-        
-        # Set voice (first available voice)
-        voices = self.engine.getProperty('voices')
-        self.engine.setProperty('voice', voices[0].id)
-        
-        # Initialize stop flag
-        self.stop_flag = False
+# Configuration Constants
+CHUNK_SIZE = 512
+RATE = 16000
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+VAD_THRESHOLD = 0.7
+SILENCE_DURATION = 5
+MAX_RECORD_TIME = 60
+INITIAL_BUFFER_TIME = 1
 
-    def text_to_speech(self, text):
-        """Convert text to speech."""
-        cleaned_text = ' '.join(text.split())
-        print('Response:', cleaned_text)
-        
-        def on_word(name, location, length):
-            if self.stop_flag:
-                self.engine.stop()
-        
-        self.engine.connect('started-word', on_word)
-        self.engine.say(cleaned_text)
-        self.engine.runAndWait()
+# Human voice frequency range (Hz)
+MIN_HUMAN_FREQ = 85  # Typical adult male lowest fundamental
+MAX_HUMAN_FREQ = 300  # Typical child/young female highest fundamental
 
-    def stop_speaking(self):
-        """Stop the speech synthesis process."""
-        print("Speech synthesis stopped.")
-        self.stop_flag = True
-        self.engine.stop()
+# Initialize PyAudio and VAD model
+p = pyaudio.PyAudio()
+vad_model = torch.jit.load("C:\\Users\\menuk\\Desktop\\whisper b and f\\silero_vad.jit")
+if isinstance(vad_model, tuple):
+    vad_model = vad_model[0]
 
-    def record_audio(self):
-        """Record audio and send to server for processing."""
-        print("Recording started (press 'q' to stop)...")
-        
-        self.is_recording = True
-        self.audio_chunks = []
-        
-        def audio_callback(indata, frames, time, status):
-            if status:
-                print(f"Status: {status}")
-            if self.is_recording:
-                self.audio_chunks.append(indata.copy())
-        
-        keyboard.add_hotkey('q', self.stop_recording)
-        
-        with sd.InputStream(callback=audio_callback, 
-                          channels=1, 
-                          samplerate=self.sample_rate):
-            while self.is_recording:
-                sd.sleep(100)
-        
-        keyboard.remove_hotkey('q')
-        
-        if not self.audio_chunks:
-            print("No audio recorded.")
-            return None
-        
-        # Process and save audio
-        recording = np.concatenate(self.audio_chunks)
-        reduced_noise = nr.reduce_noise(y=recording.flatten(), 
-                                      sr=self.sample_rate,
-                                      prop_decrease=0.7)
-        
-        # Save as MP3
-        mp3_filename = f"recording_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
-        temp_wav = "temp_recording.wav"
-        
-        sf.write(temp_wav, reduced_noise, self.sample_rate)
-        audio = AudioSegment.from_wav(temp_wav)
-        audio.export(mp3_filename, format="mp3")
-        
-        os.remove(temp_wav)
-        
-        print(f"Recording saved as {mp3_filename}")
-        
-        # Send to server
-        try:
-            with open(mp3_filename, 'rb') as f:
-                print("Starting at : ", datetime.datetime.now())
-                files = {'audio': (mp3_filename, f, 'audio/mp3')}
-                response = requests.post(f"{self.server_url}/upload", files=files)
-                print("Ended at : ", datetime.datetime.now())
+def get_dominant_frequency(audio_chunk, sample_rate):
+    """Estimate dominant frequency using FFT"""
+    fft_data = np.fft.rfft(audio_chunk)
+    magnitudes = np.abs(fft_data)
+    frequencies = np.fft.rfftfreq(len(audio_chunk), 1/sample_rate)
+    
+    # Find peak frequency with significant energy
+    peak_index = np.argmax(magnitudes)
+    peak_magnitude = magnitudes[peak_index]
+    
+    # Basic noise floor threshold (adjust based on your environment)
+    if peak_magnitude < 1000:
+        return None  # No significant frequency component
+    
+    return frequencies[peak_index]
 
-                
-                # Print response details for debugging
-                print(f"Response status code: {response.status_code}")
-                print(f"Response content: {response.text}")
-                
-                response.raise_for_status()
-                result = response.json()
-                print("\nTranscription:", result['transcription'])
-                return result
-                
-        except requests.exceptions.RequestException as e:
-            print(f"Error sending audio to server: {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            return None
-        finally:
-            print("After all")
-            # Clean up the temporary file
-            if os.path.exists(mp3_filename):
-                os.remove(mp3_filename)
+def is_human_voice(audio_chunk, sample_rate):
+    """Combined VAD and frequency range check"""
+    # Convert to float32 for VAD
+    float_audio = audio_chunk.astype(np.float32) / 32768.0
+    
+    # First check VAD
+    with torch.no_grad():
+        vad_prob = vad_model(torch.from_numpy(float_audio).unsqueeze(0), sample_rate).item()
+    
+    if vad_prob < VAD_THRESHOLD:
+        return False
+    
+    # Then check frequency characteristics
+    dominant_freq = get_dominant_frequency(audio_chunk, sample_rate)
+    
+    if dominant_freq is None:
+        return False
+    
+    return MIN_HUMAN_FREQ <= dominant_freq <= MAX_HUMAN_FREQ
 
-    def stop_recording(self):
-        """Stop the recording process."""
-        print("Recording stopped.")
-        self.is_recording = False
+def record_audio():
+    print("Recording started... Press 'q' to stop recording")
+    stream = p.open(format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    frames_per_buffer=CHUNK_SIZE)
 
-    def run(self):
-        """Main run method."""
+    frames = []  # Store all frames (including silence)
+    silence_counter = 0
+    has_speech = False
+    start_time = time.time()
+
+    try:
         while True:
-            print("\nChoose an option:")
-            print("1. Record and process audio")
-            print("2. Exit")
-            choice = input("Enter your choice (1/2): ").strip()
-            
-            if choice == '1':
-                self.stop_flag = False
-                result = self.record_audio()
-                if result:
-                    keyboard.add_hotkey('q', self.stop_speaking)
-                    self.text_to_speech(result.get('response', 'No response from server'))
-                    keyboard.remove_hotkey('q')
-            elif choice == '2':
-                print("Exiting the program.")
+            # Check if 'q' is pressed
+            if keyboard.is_pressed('q'):
+                print("\nStopping recording due to 'q' key press...")
                 break
+
+            # Read audio chunk
+            raw_data = np.frombuffer(stream.read(CHUNK_SIZE), dtype=np.int16)
+            
+            # Append all recorded data (including silence)
+            frames.append(raw_data.copy())
+
+            # Human voice check
+            human_voice = is_human_voice(raw_data, RATE)
+
+            # Update silence counter
+            if human_voice:
+                silence_counter = 0
+                has_speech = True  # Mark that speech was detected
             else:
-                print("Invalid choice. Please enter 1 or 2.")
+                if time.time() - start_time > INITIAL_BUFFER_TIME:
+                    silence_counter += CHUNK_SIZE / RATE
+
+            # Check termination conditions
+            elapsed = time.time() - start_time
+            if silence_counter >= SILENCE_DURATION:
+                print(f"Stopped after {SILENCE_DURATION}s silence/non-human sounds")
+                break
+            if elapsed >= MAX_RECORD_TIME:
+                print(f"Maximum recording time ({MAX_RECORD_TIME}s) reached")
+                break
+
+            # Debug info
+            print(f"Human: {human_voice} | Silence counter: {silence_counter:.1f}s")
+
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+    # Save all recorded audio (including silence)
+    save_audio(frames)
+
+def save_audio(frames):
+    filename = f"recording_{time.strftime('%Y%m%d-%H%M%S')}.mp3"
+    audio_data = np.concatenate(frames, axis=0)
+    audio_segment = AudioSegment(
+        data=audio_data.tobytes(),
+        sample_width=audio_data.dtype.itemsize,
+        frame_rate=RATE,
+        channels=CHANNELS
+    )
+    audio_segment.export(filename, format="mp3")
+    print(f"Saved recording to {filename}")
 
 def main():
-    client = AudioClient()
-    client.run()
+    print("Choose an option:")
+    print("1. Input voice")
+    print("2. Exit")
+    
+    choice = input("Enter your choice (1/2): ")
+    
+    if choice == '1':
+        record_audio()
+    elif choice == '2':
+        print("Exiting...")
+        sys.exit(0)
+    else:
+        print("Invalid choice. Exiting...")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nRecording cancelled")
+        sys.exit(0)

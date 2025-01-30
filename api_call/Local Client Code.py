@@ -13,11 +13,11 @@ import aiohttp
 import asyncio
 import time
 import new_pyttsx3
-import app5_chunk_by_chunk
+# import app5_chunk_by_chunk
 
 class AudioClient:
     def __init__(self, sample_rate=16000):
-        self.server_url = "https://4d71-35-185-39-192.ngrok-free.app/"
+        self.server_url = "https://4976-34-126-166-100.ngrok-free.app/"
         self.sample_rate = sample_rate
         self.is_recording = False
         self.audio_chunks = []
@@ -179,9 +179,9 @@ class AudioClient:
                     if result:
                         keyboard.add_hotkey('q', self.stop_speaking)
 
-                        app5_chunk_by_chunk.ask_question(result['result']['text'])
+                        # app5_chunk_by_chunk.ask_question(result['result']['text'])
 
-                        # new_pyttsx3.text_to_answer(result['result']['text'])
+                        new_pyttsx3.text_to_answer(result['result']['text'])
             
                         keyboard.remove_hotkey('q')
                 elif choice == '2':

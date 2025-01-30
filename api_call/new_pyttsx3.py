@@ -12,7 +12,7 @@ load_dotenv()
 
 model_name =  "phi3:3.8b"
 python_executable = "python"
-script_path = "speak.py"
+script_path = "api_call\speak.py"
 
 class TextToSpeechSystem:
     def __init__(self):
